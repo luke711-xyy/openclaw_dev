@@ -1,6 +1,6 @@
 ---
 name: openclaw-session-branch-ui
-description: Build and install the complete Session Branch UI stack for Windows-native and macOS OpenClaw setups. Use when the user wants a local web UI for named session branches under one agent, including branch CRUD, session browsing, history view, send/abort actions, background start/stop/status helpers, a Gateway startup hook, and a watcher that shuts the UI down after the Gateway exits.
+description: Install a browser-based Session Branch UI for OpenClaw on Windows-native and macOS setups. Use when the user wants one agent to manage multiple named branch conversations through a local web UI with branch CRUD, session browsing, history view, send/abort controls, background lifecycle helpers, a Gateway startup hook, and a watcher that stops the UI after the Gateway exits.
 ---
 
 # OpenClaw Session Branch UI
