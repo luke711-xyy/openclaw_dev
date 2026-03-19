@@ -1,0 +1,19 @@
+{
+  "name": "session-branch-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small local UI for OpenClaw session branches under one agent.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:bg": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start.ps1",
+    "stop:bg": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/stop.ps1",
+    "status:bg": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/status.ps1"
+  },
+  "keywords": [
+    "openclaw",
+    "session",
+    "branch"
+  ],
+  "license": "MIT"
+}

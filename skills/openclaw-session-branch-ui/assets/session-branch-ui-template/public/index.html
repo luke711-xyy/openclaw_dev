@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Session Branch UI</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h1>Session Branch UI</h1>
+          <button id="refresh-all" class="ghost">刷新</button>
+        </div>
+
+        <section class="panel">
+          <div class="panel-title-row">
+            <h2>命名分支</h2>
+          </div>
+          <form id="create-branch-form" class="create-form">
+            <input id="branch-name" name="branchName" type="text" placeholder="比如：写作分支 / 调研分支" autocomplete="off" />
+            <button type="submit">新建</button>
+          </form>
+          <div id="branches-list" class="list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title-row">
+            <h2>现有会话</h2>
+          </div>
+          <div id="sessions-list" class="list"></div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="chat-header">
+          <div>
+            <div class="eyebrow">当前分支</div>
+            <div id="active-title" class="active-title">未选择</div>
+            <div id="active-key" class="active-key"></div>
+          </div>
+          <div class="header-actions">
+            <button id="rename-branch" class="ghost">重命名</button>
+            <button id="delete-branch" class="danger ghost">删除分支</button>
+            <button id="abort-run" class="ghost">停止</button>
+          </div>
+        </header>
+
+        <section id="messages" class="messages"></section>
+
+        <footer class="composer">
+          <textarea id="composer-input" rows="4" placeholder="给当前分支发消息。第一次发消息时，这个自定义 sessionKey 就会真正开始写入历史。"></textarea>
+          <div class="composer-actions">
+            <div id="status" class="status">准备就绪</div>
+            <button id="send-button">发送</button>
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <template id="item-template">
+      <button class="list-item" type="button">
+        <div class="list-item-title"></div>
+        <div class="list-item-meta"></div>
+      </button>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
