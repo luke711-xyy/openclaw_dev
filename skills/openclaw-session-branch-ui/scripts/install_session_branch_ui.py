@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import platform
 import shutil
 from pathlib import Path
 
@@ -15,9 +15,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--state-dir', help='OpenClaw state dir. Defaults to ~/.openclaw.')
     parser.add_argument('--ui-dir-name', default='session-branch-ui', help='Target UI directory name inside the workspace.')
     parser.add_argument('--hook-name', default='session-branch-ui-autostart', help='Target hook directory name inside the state dir hooks folder.')
+    parser.add_argument('--platform', choices=('auto', 'windows', 'macos'), default='auto', help='Target platform for validation hints.')
     parser.add_argument('--force', action='store_true', help='Overwrite existing target directories.')
     parser.add_argument('--dry-run', action='store_true', help='Print planned actions without writing files.')
     return parser.parse_args()
+
+
+def detect_platform(value: str) -> str:
+    if value != 'auto':
+        return value
+    system = platform.system().lower()
+    if system == 'darwin':
+        return 'macos'
+    return 'windows'
 
 
 def default_state_dir() -> Path:
@@ -67,8 +77,20 @@ def ensure_runtime_files(ui_root: Path, dry_run: bool) -> None:
         branches_file.write_text('[]\n', encoding='utf-8')
 
 
+def print_next_steps(platform_name: str, ui_root: Path) -> None:
+    print('\nNext steps:')
+    print('1. Restart Gateway so the hook is reloaded: openclaw gateway restart')
+    if platform_name == 'macos':
+        print(f"2. Check UI status: bash '{ui_root / 'scripts' / 'status.sh'}'")
+        print('3. Open http://127.0.0.1:4317 after the UI starts')
+        return
+    print(f"2. Check UI status: powershell -NoProfile -ExecutionPolicy Bypass -File '{ui_root / 'scripts' / 'status.ps1'}'")
+    print('3. Open http://127.0.0.1:4317 after the UI starts')
+
+
 def main() -> int:
     args = parse_args()
+    target_platform = detect_platform(args.platform)
     skill_dir = Path(__file__).resolve().parents[1]
     template_src = skill_dir / 'assets' / 'session-branch-ui-template'
     hook_src = skill_dir / 'assets' / 'session-branch-ui-hook'
@@ -80,6 +102,7 @@ def main() -> int:
         'workspace': str(workspace),
         'uiRoot': str(ui_root),
         'hookRoot': str(hook_root),
+        'platform': target_platform,
         'dryRun': args.dry_run,
         'force': args.force,
     }
@@ -92,11 +115,7 @@ def main() -> int:
         patch_hook_file(hook_root / hook_file, ui_root, dry_run=args.dry_run)
 
     ensure_runtime_files(ui_root, dry_run=args.dry_run)
-
-    print('\nNext steps:')
-    print(f'1. Restart Gateway so the hook is reloaded: openclaw gateway restart')
-    print(f"2. Check UI status: powershell -NoProfile -ExecutionPolicy Bypass -File '{ui_root / 'scripts' / 'status.ps1'}'")
-    print('3. Open http://127.0.0.1:4317 after the UI starts')
+    print_next_steps(target_platform, ui_root)
     return 0
 
 

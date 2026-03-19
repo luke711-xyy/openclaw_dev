@@ -1,86 +1,119 @@
 # openclaw_dev
 
-这是一个用于公开分发 `openclaw-session-branch-ui` skill 的仓库。
+This repository publishes the `openclaw-session-branch-ui` skill.
 
-它把我之前做的 **Session Branch UI 完整功能版** 整理成了可复用的 AgentSkill，方便在新的 OpenClaw 环境中快速安装、复现和二次修改。
+It packages the complete **Session Branch UI** workflow into a reusable AgentSkill so a fresh OpenClaw setup can install the UI, its startup hook, and its watcher with minimal manual work.
 
-## 这个 skill 能做什么
+For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 
-`openclaw-session-branch-ui` 提供一套完整的 Windows 原生 OpenClaw 分支会话管理方案，包含：
+## What this skill provides
 
-- 本地 Web UI，用于管理命名分支和现有会话
-- 通过 Gateway RPC 获取会话列表、历史消息、发送消息、停止运行
-- 后台 PowerShell 启停脚本
-- Gateway 启动时自动拉起 UI 的 hook
-- 监听 Gateway 生命周期的 watcher
-- 对 Gateway CLI 混入日志时的 JSON 解析兼容处理
+`openclaw-session-branch-ui` installs a local Session Branch UI stack for OpenClaw, including:
 
-## 仓库结构
+- a local web UI for named branches and existing sessions
+- Gateway RPC access for session list, history, send, and abort
+- background start/stop/status helpers
+- a Gateway startup hook that auto-starts the UI
+- a watcher that stops the UI after the Gateway exits
+- JSON parsing compatibility when Gateway CLI logs leak into stdout before JSON
 
-- `skills/openclaw-session-branch-ui/`：skill 源码目录
-- `dist/openclaw-session-branch-ui.skill`：打包后的 skill 文件，可直接分发
+## Repository layout
 
-## skill 内包含的内容
+- `skills/openclaw-session-branch-ui/` — source skill folder
+- `dist/openclaw-session-branch-ui.skill` — packaged distributable skill bundle
 
-在 `skills/openclaw-session-branch-ui/` 中，主要包括：
+## Inside the skill
 
-- `SKILL.md`：skill 说明与使用流程
-- `scripts/install_session_branch_ui.py`：一键安装脚本
-- `references/architecture.md`：架构说明
-- `assets/session-branch-ui-template/`：完整的 UI 模板
-- `assets/session-branch-ui-hook/`：Gateway 启动 hook 模板
+The skill source contains:
 
-## 使用方式
+- `SKILL.md` — the skill entrypoint and workflow
+- `scripts/install_session_branch_ui.py` — installer for workspace + hook deployment
+- `references/architecture.md` — runtime and file layout notes
+- `references/windows.md` — Windows-specific manual commands
+- `references/macos.md` — macOS-specific manual commands
+- `assets/session-branch-ui-template/` — UI template, watcher, and control scripts
+- `assets/session-branch-ui-hook/` — Gateway startup hook template
 
-### 方式一：直接使用打包产物
+## Supported platforms
 
-使用仓库中的：
+Current support target:
+
+- Windows-native OpenClaw
+- macOS OpenClaw
+
+The same skill package now includes both Windows and macOS operator flows.
+
+## Installation
+
+### Use the packaged skill
+
+Use the prebuilt bundle:
 
 - `dist/openclaw-session-branch-ui.skill`
 
-### 方式二：直接使用源码目录
+### Use the source skill
 
-直接使用：
+Use the source folder directly:
 
 - `skills/openclaw-session-branch-ui/`
 
-## 安装流程（源码方式）
-
-在目标 OpenClaw 环境中执行：
+### Install from source
 
 ```bash
 python scripts/install_session_branch_ui.py
 ```
 
-如果目标环境使用自定义状态目录或 workspace：
+With explicit paths:
 
 ```bash
 python scripts/install_session_branch_ui.py --state-dir <state-dir> --workspace <workspace> --force
 ```
 
-## 安装后验证
+With explicit macOS hints:
+
+```bash
+python scripts/install_session_branch_ui.py --platform macos
+```
+
+## Validation
+
+After install:
+
+```bash
+openclaw gateway restart
+```
+
+Then choose your platform:
+
+### Windows
 
 ```powershell
-openclaw gateway restart
 powershell -NoProfile -ExecutionPolicy Bypass -File .\session-branch-ui\scripts\status.ps1
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4317/api/sessions
 ```
 
-## 适用场景
+### macOS
 
-适合以下需求：
+```bash
+bash ./session-branch-ui/scripts/status.sh
+curl http://127.0.0.1:4317/api/sessions
+```
 
-- 想在一个 OpenClaw agent 下维护多个命名分支会话
-- 想用一个本地网页快速切换会话、查看历史、发送消息
-- 想把这套分支 UI 流程封装成 skill，方便迁移和复用
-- 想在 Windows 原生 OpenClaw 环境里使用一套完整的 Session Branch UI 方案
+## Publishing readiness
 
-## 说明
+This repository is already arranged for public distribution:
 
-当前这份 skill 主要面向 **Windows 原生 OpenClaw** 场景。
-如果后续需要，我还可以继续补：
+- public English README at the repository root
+- Chinese README preserved separately
+- source skill folder kept clean and self-contained
+- packaged `.skill` artifact committed in `dist/`
+- platform-specific guidance moved into `references/`
 
-- macOS 适配版本
-- WSL2 / Linux 适配版本
-- 更通用的 hook / watcher 安装逻辑
-- 发布到 skills 平台所需的进一步整理
+## Next possible improvements
+
+Useful follow-ups if this is going to be published more broadly:
+
+- add screenshots or demo GIFs for the UI
+- create a GitHub Release and attach the `.skill` bundle
+- add Linux / WSL2 adaptation
+- publish to a skills directory or marketplace once the final metadata is confirmed
