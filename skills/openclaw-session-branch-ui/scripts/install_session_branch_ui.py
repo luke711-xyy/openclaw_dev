@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--state-dir', help='OpenClaw state dir. Defaults to ~/.openclaw.')
     parser.add_argument('--ui-dir-name', default='session-branch-ui', help='Target UI directory name inside the workspace.')
     parser.add_argument('--hook-name', default='session-branch-ui-autostart', help='Target hook directory name inside the state dir hooks folder.')
-    parser.add_argument('--platform', choices=('auto', 'windows', 'macos'), default='auto', help='Target platform for validation hints.')
+    parser.add_argument('--platform', choices=('auto', 'windows', 'macos', 'linux'), default='auto', help='Target platform for validation hints.')
     parser.add_argument('--force', action='store_true', help='Overwrite existing target directories.')
     parser.add_argument('--dry-run', action='store_true', help='Print planned actions without writing files.')
     return parser.parse_args()
@@ -27,6 +27,8 @@ def detect_platform(value: str) -> str:
     system = platform.system().lower()
     if system == 'darwin':
         return 'macos'
+    if system == 'linux':
+        return 'linux'
     return 'windows'
 
 
@@ -80,7 +82,7 @@ def ensure_runtime_files(ui_root: Path, dry_run: bool) -> None:
 def print_next_steps(platform_name: str, ui_root: Path) -> None:
     print('\nNext steps:')
     print('1. Restart Gateway so the hook is reloaded: openclaw gateway restart')
-    if platform_name == 'macos':
+    if platform_name in {'macos', 'linux'}:
         print(f"2. Check UI status: bash '{ui_root / 'scripts' / 'status.sh'}'")
         print('3. Open http://127.0.0.1:4317 after the UI starts')
         return

@@ -31,6 +31,13 @@
           </div>
           <div id="sessions-list" class="list"></div>
         </section>
+
+        <section class="panel metrics-panel">
+          <div class="panel-title-row">
+            <h2>资源观测</h2>
+          </div>
+          <div id="metrics-panel" class="metrics-grid"></div>
+        </section>
       </aside>
 
       <main class="main">
@@ -41,13 +48,27 @@
             <div id="active-key" class="active-key"></div>
           </div>
           <div class="header-actions">
+            <div class="search-shell">
+              <div class="search-input-row">
+                <input id="message-search" type="search" placeholder="搜索时间戳 / 关键词" autocomplete="off" disabled />
+                <div id="message-search-summary" class="search-summary"></div>
+              </div>
+              <div id="message-search-results" class="search-results" hidden></div>
+            </div>
             <button id="rename-branch" class="ghost">重命名</button>
             <button id="delete-branch" class="danger ghost">删除分支</button>
             <button id="abort-run" class="ghost">停止</button>
           </div>
         </header>
 
-        <section id="messages" class="messages"></section>
+        <section class="messages-shell">
+          <div id="history-loading-banner" class="history-toast" hidden></div>
+          <section id="messages" class="messages"></section>
+        </section>
+
+        <div id="message-context-menu" class="context-menu" hidden>
+          <button id="context-delete-before" class="context-menu-item danger" type="button">删除此条及之前</button>
+        </div>
 
         <footer class="composer">
           <textarea id="composer-input" rows="4" placeholder="给当前分支发消息。第一次发消息时，这个自定义 sessionKey 就会真正开始写入历史。"></textarea>
