@@ -2,7 +2,7 @@
 
 This repository publishes the `openclaw-session-branch-ui` skill.
 
-It packages the complete **Session Branch UI** workflow into a reusable AgentSkill so a fresh OpenClaw setup can install the UI, its startup hook, and its watcher with minimal manual work.
+It packages the full **Session Branch UI** workflow into a reusable AgentSkill so a fresh OpenClaw setup can install the UI, its Gateway startup hook, and its watcher with minimal manual work.
 
 For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 
@@ -11,11 +11,14 @@ For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 `openclaw-session-branch-ui` installs a local Session Branch UI stack for OpenClaw, including:
 
 - a local web UI for named branches and existing sessions
-- Gateway RPC access for session list, history, send, and abort
+- lazy loading for older transcript history
+- message search by keyword or timestamp
+- one-click copy buttons for user and assistant messages
+- Gateway websocket RPC access for session list, history, send, and abort
 - background start/stop/status helpers
 - a Gateway startup hook that auto-starts the UI
 - a watcher that stops the UI after the Gateway exits
-- JSON parsing compatibility when Gateway CLI logs leak into stdout before JSON
+- compact-history recovery by merging active transcripts with same-session `.jsonl.bak.*` files
 
 ## Repository layout
 
@@ -27,11 +30,13 @@ For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 The skill source contains:
 
 - `SKILL.md` — the skill entrypoint and workflow
+- `README.md` — human-facing installation and publishing guide
 - `scripts/install_session_branch_ui.py` — installer for workspace + hook deployment
 - `references/architecture.md` — runtime and file layout notes
 - `references/windows.md` — Windows-specific manual commands
 - `references/macos.md` — macOS-specific manual commands
-- `assets/session-branch-ui-template/` — UI template, watcher, and control scripts
+- `references/linux.md` — Linux-specific manual commands
+- `assets/session-branch-ui-template/` — UI template, Gateway websocket client, watcher, and control scripts
 - `assets/session-branch-ui-hook/` — Gateway startup hook template
 
 ## Supported platforms
@@ -40,8 +45,7 @@ Current support target:
 
 - Windows-native OpenClaw
 - macOS OpenClaw
-
-The same skill package now includes both Windows and macOS operator flows.
+- Linux OpenClaw
 
 ## Installation
 
@@ -69,10 +73,10 @@ With explicit paths:
 python scripts/install_session_branch_ui.py --state-dir <state-dir> --workspace <workspace> --force
 ```
 
-With explicit macOS hints:
+With explicit platform hints:
 
 ```bash
-python scripts/install_session_branch_ui.py --platform macos
+python scripts/install_session_branch_ui.py --platform linux
 ```
 
 ## Validation
@@ -92,7 +96,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\session-branch-ui\scripts\
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4317/api/sessions
 ```
 
-### macOS
+### macOS / Linux
 
 ```bash
 bash ./session-branch-ui/scripts/status.sh
@@ -101,7 +105,7 @@ curl http://127.0.0.1:4317/api/sessions
 
 ## Publishing readiness
 
-This repository is already arranged for public distribution:
+This repository is arranged for public distribution:
 
 - public English README at the repository root
 - Chinese README preserved separately
@@ -115,5 +119,4 @@ Useful follow-ups if this is going to be published more broadly:
 
 - add screenshots or demo GIFs for the UI
 - create a GitHub Release and attach the `.skill` bundle
-- add Linux / WSL2 adaptation
-- publish to a skills directory or marketplace once the final metadata is confirmed
+- publish to ClawHub once final metadata/versioning is settled
