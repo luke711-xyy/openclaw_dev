@@ -1,4 +1,27 @@
+# Python
 *.pyc
 __pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+
+# OS files
 Thumbs.db
 .DS_Store
+
+# Editors
+.vscode/
+.idea/
