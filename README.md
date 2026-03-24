@@ -103,20 +103,8 @@ bash ./session-branch-ui/scripts/status.sh
 curl http://127.0.0.1:4317/api/sessions
 ```
 
-## Publishing readiness
+## Notes
 
-This repository is arranged for public distribution:
-
-- public English README at the repository root
-- Chinese README preserved separately
-- source skill folder kept clean and self-contained
-- packaged `.skill` artifact committed in `dist/`
-- platform-specific guidance moved into `references/`
-
-## Next possible improvements
-
-Useful follow-ups if this is going to be published more broadly:
-
-- add screenshots or demo GIFs for the UI
-- create a GitHub Release and attach the `.skill` bundle
-- publish to ClawHub once final metadata/versioning is settled
+- This repository contains both the source skill folder and a packaged `.skill` bundle in `dist/`
+- Use the packaged bundle for the fastest installation path, or use the source folder if you want to inspect or customize the skill before installing
+- Platform-specific operational details live under `skills/openclaw-session-branch-ui/references/`

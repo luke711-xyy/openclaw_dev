@@ -125,32 +125,13 @@ If that returns JSON, the UI is alive.
 - Remote Gateway-only setups are not enough if you want complete transcript history
 - `/compact` history is preserved in Branch UI by merging the active transcript with compacted backup files when present
 
-## Publish to ClawHub
+## Who this is for
 
-Before publishing:
+This skill is a good fit if you want:
 
-```bash
-clawhub login
-clawhub whoami
-```
-
-Publish command template:
-
-```bash
-clawhub publish ./openclaw-session-branch-ui \
-  --slug openclaw-session-branch-ui \
-  --name "OpenClaw Session Branch UI" \
-  --version 1.2.0 \
-  --changelog "Initial public release: cross-platform installer, history search, compact-history recovery, and Gateway autostart hook"
-```
-
-## Suggested tags / positioning
-
-Good fit for users who want:
-
-- branch-style conversations in one agent
+- branch-style conversations inside one OpenClaw agent
 - a local browser UI for session management
-- reproducible installation across multiple devices
+- a reproducible setup across multiple devices
 - a better workflow for long-running OpenClaw sessions
 
 ## Troubleshooting
@@ -158,3 +139,12 @@ Good fit for users who want:
 - If the page opens but history looks incomplete, verify the target machine has the right `~/.openclaw/agents/<agent>/sessions/` data
 - If the UI does not start after install, restart the Gateway and inspect `session-branch-ui/logs/`
 - If `clawhub publish` fails, verify login state with `clawhub whoami`
+multiple devices
+- a better workflow for long-running OpenClaw sessions
+
+## Troubleshooting
+
+- If the page opens but history looks incomplete, verify the target machine has the right `~/.openclaw/agents/<agent>/sessions/` data
+- If the UI does not start after install, restart the Gateway and inspect `session-branch-ui/logs/`
+- If `clawhub publish` fails, verify login state with `clawhub whoami`
+the same machine as the target OpenClaw state directory

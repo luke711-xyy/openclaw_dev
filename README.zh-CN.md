@@ -101,19 +101,9 @@ bash ./session-branch-ui/scripts/status.sh
 curl http://127.0.0.1:4317/api/sessions
 ```
 
-## 为公开发布做的整理
+## 补充说明
 
-目前仓库已经具备较好的公开分发结构：
-
-- 仓库根目录提供中英文 README
-- skill 源码结构保持简洁
-- 平台差异说明拆到 `references/`
-- 打包产物已放入 `dist/`
-- 安装器已支持 Windows / macOS / Linux
-
-## 后续还可以继续做
-
-- 补 UI 截图或 GIF
-- 建 GitHub Release 并挂 `.skill`
-- 发布到 ClawHub
-- 再对 skill 元数据做一次面向平台检索优化
+- 这个仓库同时提供 skill 源码目录和打包后的 `.skill` 文件
+- 如果你只想快速安装，优先使用 `dist/` 里的打包产物
+- 如果你想先审查或定制再安装，可以直接查看 `skills/openclaw-session-branch-ui/`
+- 平台差异和运行细节放在 `skills/openclaw-session-branch-ui/references/`
