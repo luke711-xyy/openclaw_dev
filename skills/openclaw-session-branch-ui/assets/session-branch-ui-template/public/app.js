@@ -19,6 +19,8 @@ const state = {
   searchActiveIndex: -1,
   highlightedMessageId: null,
   historyToastTimer: null,
+  sidebarManuallyCollapsed: false,
+  sidebarAutoCollapsed: false,
 };
 
 const HISTORY_PAGE_SIZE = 60;
@@ -38,6 +40,10 @@ const MESSAGE_HIGHLIGHT_MS = 2200;
 const elements = {
   branchesList: document.getElementById('branches-list'),
   sessionsList: document.getElementById('sessions-list'),
+  layout: document.getElementById('layout'),
+  sidebar: document.getElementById('sidebar'),
+  sidebarOpen: document.getElementById('sidebar-open'),
+  sidebarClose: document.getElementById('sidebar-close'),
   messages: document.getElementById('messages'),
   activeTitle: document.getElementById('active-title'),
   activeKey: document.getElementById('active-key'),
@@ -64,6 +70,7 @@ boot();
 
 async function boot() {
   bindEvents();
+  syncSidebarMode();
   updateSelectionChrome();
   renderMessages([]);
   renderMetrics(null);
@@ -83,6 +90,20 @@ function bindEvents() {
   elements.renameBranch.addEventListener('click', () => guard(onRenameBranch));
   elements.deleteBranch.addEventListener('click', () => guard(onDeleteBranch));
   elements.abortRun.addEventListener('click', () => guard(onAbort));
+  elements.sidebarOpen.addEventListener('click', () => {
+    if (state.sidebarAutoCollapsed) {
+      openSidebarOverlay();
+      return;
+    }
+    setSidebarCollapsed(false, true);
+  });
+  elements.sidebarClose.addEventListener('click', () => {
+    if (state.sidebarAutoCollapsed) {
+      closeSidebarOverlay();
+      return;
+    }
+    setSidebarCollapsed(true, true);
+  });
   elements.contextDeleteBefore.addEventListener('click', () => guard(onContextDeleteBefore));
   elements.messages.addEventListener('scroll', () => {
     hideContextMenu();
@@ -102,6 +123,14 @@ function bindEvents() {
     if (!event.target.closest('.search-shell')) {
       hideSearchResults();
     }
+    if (
+      state.sidebarAutoCollapsed &&
+      elements.layout.classList.contains('sidebar-overlay-open') &&
+      !event.target.closest('#sidebar') &&
+      !event.target.closest('#sidebar-open')
+    ) {
+      closeSidebarOverlay();
+    }
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -111,6 +140,7 @@ function bindEvents() {
   });
   window.addEventListener('resize', () => {
     hideContextMenu();
+    syncSidebarMode();
     queueVirtualRender();
   });
 }
@@ -141,6 +171,44 @@ async function refreshSessions() {
 async function refreshMetrics() {
   const metrics = await api('/api/metrics');
   renderMetrics(metrics);
+}
+
+function getLayoutThresholdWidth() {
+  return 1120;
+}
+
+function syncSidebarMode() {
+  state.sidebarAutoCollapsed = window.innerWidth < getLayoutThresholdWidth();
+  applySidebarState();
+}
+
+function setSidebarCollapsed(collapsed, manual = false) {
+  if (manual) {
+    state.sidebarManuallyCollapsed = collapsed;
+  }
+  if (collapsed) {
+    closeSidebarOverlay();
+  }
+  applySidebarState();
+}
+
+function openSidebarOverlay() {
+  elements.layout.classList.add('sidebar-overlay-open');
+}
+
+function closeSidebarOverlay() {
+  elements.layout.classList.remove('sidebar-overlay-open');
+}
+
+function applySidebarState() {
+  const collapsed = state.sidebarAutoCollapsed || state.sidebarManuallyCollapsed;
+  elements.layout.classList.toggle('sidebar-collapsed', collapsed);
+  if (!state.sidebarAutoCollapsed) {
+    closeSidebarOverlay();
+  }
+  elements.sidebarOpen.style.display = collapsed ? 'inline-flex' : 'none';
+  elements.sidebarClose.style.display = 'inline-flex';
+  elements.sidebarOpen.textContent = state.sidebarAutoCollapsed ? '☰' : '◧';
 }
 
 function renderMetrics(metrics) {
@@ -246,6 +314,7 @@ function clearActiveState() {
 }
 
 async function selectItem(item) {
+  closeSidebarOverlay();
   state.active = {
     type: item.type,
     sessionKey: item.type === 'branch' ? item.data.sessionKey : item.data.key,

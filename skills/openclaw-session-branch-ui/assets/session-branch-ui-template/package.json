@@ -1,6 +1,6 @@
 {
   "name": "session-branch-ui",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Small local UI for OpenClaw session branches under one agent.",
   "main": "server.js",

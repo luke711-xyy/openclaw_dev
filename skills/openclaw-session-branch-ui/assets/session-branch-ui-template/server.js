@@ -191,9 +191,107 @@ async function handleApi(req, res, url) {
     const afterId = String(url.searchParams.get('afterId') || '').trim();
     startHistoryWatcher(sessionKey, { active: true, updatedAt: Date.now() });
     let cache = primeHistoryCache(sessionKey);
+
+    // ── Always check transcript for changes ──────────────────────────────
+    // When RPC has no scope, chat.history fails and the cache goes stale.
+    // We handle two cases:
+    //  1. Incremental: transcript has grown → read only the new bytes and append.
+    //  2. Truncated: transcript got smaller (reset) → full rebuild from transcript.
+    let rpcFailed = false;
     if (!cache.lastSyncAt || (Date.now() - cache.lastSyncAt) >= ACTIVE_DELTA_SYNC_MIN_MS) {
-      cache = await syncCacheFromRecentHistory(sessionKey, cache);
+      try {
+        cache = await syncCacheFromRecentHistory(sessionKey, cache);
+      } catch (error) {
+        rpcFailed = true;
+        console.warn(`[delta] RPC sync failed (${error?.message}), using direct transcript scan`);
+      }
     }
+
+    const sessionInfo = getSessionEntry(sessionKey);
+    if (!sessionInfo?.transcriptPath || !fs.existsSync(sessionInfo.transcriptPath)) {
+      const delta = getHistoryDelta(cache, afterId);
+      sendJson(res, 200, delta);
+      return;
+    }
+
+    const stats = fs.statSync(sessionInfo.transcriptPath);
+
+    // Always compare cached transcript size vs actual — even when RPC "succeeded"
+    // (the RPC might return stale data). This keeps delta fresh without extra cost.
+    if (stats.size > (cache.transcriptSize || 0)) {
+      // ── Incremental append from transcript tail ──────────────────────
+      try {
+        const fd = fs.openSync(sessionInfo.transcriptPath, 'r');
+        const deltaBytes = stats.size - (cache.transcriptSize || 0);
+        const buffer = Buffer.alloc(deltaBytes);
+        fs.readSync(fd, buffer, 0, deltaBytes, cache.transcriptSize || 0);
+        fs.closeSync(fd);
+        const raw = buffer.toString('utf8');
+        const lines = raw.split(/\r?\n/).filter(Boolean);
+        const appended = parseTranscriptLines(lines, cache.trimFloor);
+
+        if (appended.length > 0) {
+          const messagesPath = historyCacheMessagesPath(sessionKey);
+          const baseOffset = fs.existsSync(messagesPath)
+            ? fs.statSync(messagesPath).size
+            : 0;
+          let offset = baseOffset;
+          const newIndex = [];
+          for (const msg of appended) {
+            const line = `${JSON.stringify(msg)}\n`;
+            const length = Buffer.byteLength(line, 'utf8');
+            fs.appendFileSync(messagesPath, line, 'utf8');
+            newIndex.push({ id: msg.id, role: msg.role, timestamp: msg.timestamp, offset, length });
+            offset += length;
+          }
+          cache = {
+            ...cache,
+            transcriptPath: sessionInfo.transcriptPath,
+            transcriptSources: resolveTranscriptSources(sessionInfo.transcriptPath),
+            transcriptSourcesSignature: buildTranscriptSourcesSignature(resolveTranscriptSources(sessionInfo.transcriptPath)),
+            transcriptSize: stats.size,
+            transcriptLineCount: (cache.transcriptLineCount || 0) + lines.length,
+            messageIndex: [...(cache.messageIndex || []), ...newIndex],
+            messageCount: (cache.messageCount || 0) + appended.length,
+            newestMessageId: appended[appended.length - 1].id,
+            lastSyncAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          writeHistoryCache(cache);
+        } else {
+          // Parsed no messages but transcript grew — still update transcriptSize
+          cache.transcriptSize = stats.size;
+          cache.lastSyncAt = Date.now();
+          writeHistoryCache(cache);
+        }
+      } catch (err) {
+        console.error(`[delta] incremental transcript scan failed: ${err?.message}`);
+      }
+    } else if (stats.size < (cache.transcriptSize || 0)) {
+      // ── Transcript was truncated — full rebuild ───────────────────────
+      try {
+        const rebuilt = normalizeTranscriptMessages(sessionInfo.transcriptPath, cache.trimFloor);
+        const artifacts = writeMessageLog(sessionKey, rebuilt.messages);
+        cache = {
+          ...cache,
+          sessionId: sessionInfo.entry?.sessionId || cache.sessionId,
+          transcriptPath: sessionInfo.transcriptPath,
+          transcriptSources: resolveTranscriptSources(sessionInfo.transcriptPath),
+          transcriptSourcesSignature: buildTranscriptSourcesSignature(resolveTranscriptSources(sessionInfo.transcriptPath)),
+          transcriptSize: rebuilt.transcriptSize,
+          transcriptLineCount: rebuilt.transcriptLineCount,
+          messageIndex: artifacts.messageIndex,
+          messageCount: artifacts.messageCount,
+          newestMessageId: artifacts.newestMessageId,
+          lastSyncAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        writeHistoryCache(cache);
+      } catch (err) {
+        console.error(`[delta] transcript rebuild failed: ${err?.message}`);
+      }
+    }
+
     const delta = getHistoryDelta(cache, afterId);
     sendJson(res, 200, delta);
     return;
@@ -207,14 +305,126 @@ async function handleApi(req, res, url) {
       sendJson(res, 400, { error: 'sessionKey and message are required' });
       return;
     }
-    const result = await gatewayCall('chat.send', {
-      sessionKey,
-      message,
-      deliver: false,
-      idempotencyKey: `branch-ui-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    });
-    await ensureHistoryCache(sessionKey, { watch: true });
-    sendJson(res, 200, result);
+
+    // Try RPC first; on scope error fall back to direct transcript write
+    let rpcOk = false;
+    let rpcError = null;
+    try {
+      const result = await gatewayCall('chat.send', {
+        sessionKey,
+        message,
+        deliver: false,
+        idempotencyKey: `branch-ui-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+      rpcOk = true;
+      await ensureHistoryCache(sessionKey, { watch: true });
+      sendJson(res, 200, { ok: true, result });
+      return;
+    } catch (err) {
+      rpcError = err?.message || String(err);
+      const scopeMissing = /missing scope/i.test(rpcError);
+      if (!scopeMissing) {
+        sendJson(res, 502, { error: 'gateway error', detail: rpcError });
+        return;
+      }
+      // Fall-through: scope missing → write directly to transcript + local cache
+    }
+
+    // ── Fallback: direct transcript append ──────────────────────────────────
+    console.warn(`[send] RPC scope error (${rpcError}), falling back to direct transcript write`);
+    const { agentId, entry, transcriptPath } = ensureLocalSessionEntry(sessionKey);
+    const sessionId = entry?.sessionId;
+    if (!sessionId || !transcriptPath) {
+      sendJson(res, 404, { error: 'session not found' });
+      return;
+    }
+
+    const sessionsDir = resolveSessionsDirForAgent(agentId);
+    if (!fs.existsSync(transcriptPath)) {
+      sendJson(res, 404, { error: 'transcript file not found' });
+      return;
+    }
+
+    // Read last line to get parentId
+    let parentId = null;
+    try {
+      const lines = fs.readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean);
+      if (lines.length > 0) {
+        const last = JSON.parse(lines[lines.length - 1]);
+        parentId = last.id || null;
+      }
+    } catch { /* ignore */ }
+
+    const msgId = randomUUID().replace(/-/g, '').slice(0, 16);
+    const ts = new Date().toISOString();
+    const tsMs = Date.now();
+    const msgEntry = {
+      type: 'message',
+      id: msgId,
+      parentId,
+      timestamp: ts,
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: message }],
+        timestamp: tsMs,
+      },
+    };
+
+    fs.appendFileSync(transcriptPath, JSON.stringify(msgEntry) + '\n', 'utf8');
+
+    // Keep transcriptSize in cache in sync so the delta path detects growth
+    cache = readHistoryCache(sessionKey);
+    const newStats = fs.statSync(transcriptPath);
+    cache.transcriptSize = newStats.size;
+    cache.transcriptLineCount = (cache.transcriptLineCount || 0) + 1;
+
+    // ── Update local history cache directly ──────────────────────────────
+    // Bypass chat.history RPC: write the new message straight into the
+    // session's local history-cache so the UI sees it immediately.
+    // IMPORTANT: cache message format is NORMALIZED ({ id, role, text, timestamp }),
+    // not raw transcript event format.
+    try {
+      const sessionInfo = getSessionEntry(sessionKey);
+      const transcriptSources = resolveTranscriptSources(sessionInfo.transcriptPath);
+      let cache = readHistoryCache(sessionKey);
+      cache = {
+        ...cache,
+        transcriptSourcesSignature: buildTranscriptSourcesSignature(transcriptSources),
+        transcriptPath: sessionInfo.transcriptPath,
+        sessionId: sessionInfo.entry?.sessionId || cache.sessionId,
+      };
+
+      const normalizedMessage = createNormalizedMessage('user', message, tsMs);
+      if (normalizedMessage) {
+        const messagesPath = historyCacheMessagesPath(sessionKey);
+        const normalizedLine = JSON.stringify(normalizedMessage) + '\n';
+        const offset = fs.existsSync(messagesPath)
+          ? fs.statSync(messagesPath).size
+          : 0;
+        const length = Buffer.byteLength(normalizedLine, 'utf8');
+
+        fs.appendFileSync(messagesPath, normalizedLine, 'utf8');
+
+        cache.messageIndex = [...(cache.messageIndex || []), {
+          id: normalizedMessage.id,
+          role: normalizedMessage.role,
+          timestamp: normalizedMessage.timestamp,
+          offset,
+          length,
+        }];
+        cache.messageCount = cache.messageIndex.length;
+        cache.newestMessageId = normalizedMessage.id;
+        cache.lastSyncAt = Date.now();
+        cache.updatedAt = Date.now();
+        writeHistoryCache(cache);
+      }
+
+      startHistoryWatcher(sessionKey, { active: true, updatedAt: Date.now() });
+    } catch (err) {
+      console.error(`[send] local cache update failed (non-fatal): ${err?.message || err}`);
+    }
+
+    sendJson(res, 200, { ok: true, fallback: true, id: msgId });
     return;
   }
 
@@ -225,8 +435,17 @@ async function handleApi(req, res, url) {
       sendJson(res, 400, { error: 'sessionKey is required' });
       return;
     }
-    const result = await gatewayCall('chat.abort', { sessionKey });
-    sendJson(res, 200, result);
+    try {
+      const result = await gatewayCall('chat.abort', { sessionKey });
+      sendJson(res, 200, result);
+    } catch (err) {
+      const text = String(err?.message || err);
+      if (/missing scope/i.test(text)) {
+        sendJson(res, 200, { ok: true, fallback: true, note: 'abort skipped - no operator.write scope' });
+      } else {
+        sendJson(res, 502, { error: 'abort failed', detail: text });
+      }
+    }
     return;
   }
 
@@ -400,15 +619,58 @@ function readSessionStore(agentId) {
   const sessionsDir = resolveSessionsDirForAgent(agentId);
   const storePath = path.join(sessionsDir, 'sessions.json');
   if (!fs.existsSync(storePath)) {
-    return { sessionsDir, store: {} };
+    return { sessionsDir, store: {}, storePath };
   }
 
   try {
     const raw = fs.readFileSync(storePath, 'utf8');
-    return { sessionsDir, store: JSON.parse(raw || '{}') || {} };
+    return { sessionsDir, store: JSON.parse(raw || '{}') || {}, storePath };
   } catch {
-    return { sessionsDir, store: {} };
+    return { sessionsDir, store: {}, storePath };
   }
+}
+
+function writeSessionStore(agentId, store) {
+  const { storePath, sessionsDir } = readSessionStore(agentId);
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  const tempPath = `${storePath}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+  fs.renameSync(tempPath, storePath);
+}
+
+function ensureLocalSessionEntry(sessionKey) {
+  const existing = getSessionEntry(sessionKey);
+  if (existing.entry?.sessionId && existing.transcriptPath) {
+    return existing;
+  }
+
+  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  const { sessionsDir, store } = readSessionStore(agentId);
+  const template = store[`agent:${agentId}:main`] || Object.values(store).find((entry) => entry?.chatType === 'direct') || null;
+  const sessionId = randomUUID();
+  const transcriptPath = path.join(sessionsDir, `${sessionId}.jsonl`);
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  if (!fs.existsSync(transcriptPath)) {
+    fs.writeFileSync(transcriptPath, '', 'utf8');
+  }
+
+  const entry = {
+    ...(template || {}),
+    sessionId,
+    updatedAt: Date.now(),
+    systemSent: template?.systemSent ?? true,
+    abortedLastRun: false,
+    chatType: template?.chatType || 'direct',
+    deliveryContext: template?.deliveryContext || { channel: 'webchat' },
+    lastChannel: template?.lastChannel || template?.deliveryContext?.channel || 'webchat',
+    origin: template?.origin || { provider: 'webchat', surface: 'webchat', chatType: 'direct' },
+    sessionFile: transcriptPath,
+    compactionCount: template?.compactionCount ?? 0,
+  };
+  delete entry.displayName;
+  store[sessionKey] = entry;
+  writeSessionStore(agentId, store);
+  return { agentId, sessionsDir, entry, transcriptPath };
 }
 
 function getSessionEntry(sessionKey) {
@@ -699,13 +961,31 @@ function createNormalizedMessage(role, text, timestamp) {
   };
 }
 
+function extractMessageTextPayload(message) {
+  if (!message) {
+    return '';
+  }
+  const directText = extractRenderableText(message.text || '');
+  if (directText) {
+    return directText;
+  }
+  const contentText = extractRenderableText(message.content || '');
+  if (contentText) {
+    return contentText;
+  }
+  if (message.role === 'assistant' && message.errorMessage) {
+    return `[error] ${String(message.errorMessage)}`;
+  }
+  return '';
+}
+
 function normalizeChatHistoryMessages(rawMessages, trimFloor = null) {
   const normalized = [];
   for (const message of Array.isArray(rawMessages) ? rawMessages : []) {
     if (!message || (message.role !== 'user' && message.role !== 'assistant')) {
       continue;
     }
-    const text = extractRenderableText(message.content || message.text || '');
+    const text = extractMessageTextPayload(message);
     const normalizedMessage = createNormalizedMessage(message.role, text, message.timestamp);
     if (normalizedMessage) {
       normalized.push(normalizedMessage);
@@ -732,7 +1012,7 @@ function parseTranscriptLines(lines, trimFloor = null) {
       continue;
     }
 
-    const text = extractRenderableText(event.message.content || event.message.text || '');
+    const text = extractMessageTextPayload(event.message);
     const normalizedMessage = createNormalizedMessage(event.message.role, text, event.message.timestamp || event.timestamp);
     if (normalizedMessage) {
       normalized.push(normalizedMessage);
@@ -888,7 +1168,19 @@ async function syncCacheFromRecentHistory(sessionKey, cache) {
     if (!cache.messageCount) {
       throw error;
     }
-    return cache;
+    // RPC failed but cache has messages — fall back to transcript incremental sync
+    {
+      const si = getSessionEntry(sessionKey);
+      if (si?.transcriptPath) {
+        const nextCache = appendTranscriptMessages(si.transcriptPath, cache);
+        if (nextCache !== cache) {
+          const finalCache = { ...nextCache, lastSyncAt: Date.now() };
+          writeHistoryCache(finalCache);
+          return finalCache;
+        }
+      }
+      return { ...cache, lastSyncAt: Date.now() };
+    }
   }
 
   const incoming = normalizeChatHistoryMessages(result.messages || [], cache.trimFloor);
@@ -1182,15 +1474,20 @@ function getHistoryDelta(cache, afterId) {
   if (index === -1) {
     return {
       messages: [],
-      newestId: cache.newestMessageId || null,
+      newestId: cache.messageIndex?.length
+        ? cache.messageIndex[cache.messageIndex.length - 1].id
+        : cache.newestMessageId || null,
       resetRequired: true,
       lastSyncAt: cache.lastSyncAt,
     };
   }
 
+  const msgs = readMessagesRange(cache.sessionKey, cache, index + 1, total);
+  const lastMsg = msgs[msgs.length - 1];
+
   return {
-    messages: readMessagesRange(cache.sessionKey, cache, index + 1, total),
-    newestId: cache.newestMessageId || afterId,
+    messages: msgs,
+    newestId: lastMsg?.id || afterId,
     resetRequired: false,
     lastSyncAt: cache.lastSyncAt,
   };

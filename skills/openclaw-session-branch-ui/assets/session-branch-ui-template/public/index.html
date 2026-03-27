@@ -7,10 +7,13 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="layout">
-      <aside class="sidebar">
+    <div id="layout" class="layout">
+      <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
-          <h1>Session Branch UI</h1>
+          <div class="sidebar-header-main">
+            <button id="sidebar-close" class="ghost sidebar-toggle sidebar-close" type="button" aria-label="隐藏导航栏">☰</button>
+            <h1>Session Branch UI</h1>
+          </div>
           <button id="refresh-all" class="ghost">刷新</button>
         </div>
 
@@ -42,10 +45,13 @@
 
       <main class="main">
         <header class="chat-header">
-          <div>
-            <div class="eyebrow">当前分支</div>
-            <div id="active-title" class="active-title">未选择</div>
-            <div id="active-key" class="active-key"></div>
+          <div class="chat-title-shell">
+            <button id="sidebar-open" class="ghost sidebar-toggle sidebar-open" type="button" aria-label="显示导航栏">☰</button>
+            <div>
+              <div class="eyebrow">当前分支</div>
+              <div id="active-title" class="active-title">未选择</div>
+              <div id="active-key" class="active-key"></div>
+            </div>
           </div>
           <div class="header-actions">
             <div class="search-shell">

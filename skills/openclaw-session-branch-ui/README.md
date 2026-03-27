@@ -1,83 +1,96 @@
 # OpenClaw Session Branch UI
 
-A reproducible Session Branch UI skill for OpenClaw.
+一个可复用的 OpenClaw Skill：安装后会在本机启动一个浏览器 UI，用来在同一个 agent 下管理多个命名分支会话。
 
-This skill installs a local web UI that lets one OpenClaw agent manage multiple named branch conversations from the browser. It is designed to be reusable across Windows, macOS, and Linux.
+它适合这样的场景：
 
-## What it does
+- 一个 agent 下长期维护多个 branch / 任务线
+- 想在浏览器里查看、切换、搜索、发送消息
+- 想把这套能力稳定安装到别的电脑上
+- 希望 Gateway 重启后自动拉起 UI
 
-- Create named branches backed by stable `sessionKey` values
-- Browse current visible sessions from the local Gateway
-- View message history with lazy loading for older messages
-- Search messages by keyword or timestamp
-- Copy user/assistant messages with one click
-- Abort the active run for the selected session
-- Preserve compacted history by merging current transcript data with same-session `.jsonl.bak.*` files when available
-- Start automatically with the Gateway through a bundled startup hook
-- Stop automatically after the Gateway exits through a watcher process
+## 当前版本重点
 
-## Requirements
+本版已经包含最近修复过的稳定性问题：
 
-- OpenClaw installed on the target machine
-- `node` available on `PATH`
-- `openclaw` available on `PATH`
-- The skill must be installed on the same machine as the target OpenClaw state directory for full history fidelity
+- `chat.send` 缺少 `operator.write` scope 时，自动 fallback 到本地 transcript 写入
+- fallback 发送后，`history-delta` 可以立即看到新 user message
+- assistant 回复会继续同步进 `history-delta`
+- assistant 没有正文但存在 `errorMessage` 时，会把错误内容显式展示到历史里，而不是静默丢失
 
-## Install the skill
+## 主要能力
 
-### Option A: Install from ClawHub
+- 创建/重命名/删除命名分支
+- 浏览 Gateway 当前可见 sessions
+- 懒加载历史消息
+- 搜索历史消息
+- 发送消息 / 中止当前运行
+- 合并当前 transcript 与同 session 的 `.jsonl.bak.*`，尽量保留 compact 前后的历史可见性
+- 通过 Gateway hook 自动启动 UI，并在 Gateway 退出后自动停止 watcher
 
-After publication, install with:
+## 目录结构
+
+- `SKILL.md`：给 agent 用的安装/使用说明
+- `scripts/install_session_branch_ui.py`：跨平台安装脚本
+- `assets/session-branch-ui-template/`：实际安装到目标机器的 UI 模板
+- `assets/session-branch-ui-hook/`：Gateway 启动 hook
+- `references/`：平台与架构说明
+
+## 在别的电脑安装
+
+### 方案 A：从 GitHub 克隆后安装
 
 ```bash
-clawhub install openclaw-session-branch-ui
-```
-
-Then run the installer from the installed skill directory.
-
-### Option B: Install from source
-
-Run the bundled installer:
-
-```bash
+git clone https://github.com/luke711-xyy/openclaw-session-branch-ui.git
+cd openclaw-session-branch-ui
 python scripts/install_session_branch_ui.py
 ```
 
-Custom target paths:
+自定义 OpenClaw 路径：
 
 ```bash
 python scripts/install_session_branch_ui.py --state-dir ~/.openclaw --workspace ~/.openclaw/workspace --force
 ```
 
-Dry-run first:
+先 dry-run：
 
 ```bash
 python scripts/install_session_branch_ui.py --dry-run
 ```
 
-## After installation
+### 方案 B：从本地 skill 包安装
 
-Restart the Gateway so the startup hook is loaded:
+本仓库外也会生成一个可分发的 `openclaw-session-branch-ui.skill` 包。
+安装后进入 skill 目录，再运行：
+
+```bash
+python scripts/install_session_branch_ui.py
+```
+
+## 安装后验证
+
+重启 Gateway：
 
 ```bash
 openclaw gateway restart
 ```
 
-Then open:
+打开：
 
 ```text
 http://127.0.0.1:4317
 ```
 
-## Manual runtime control
-
-### Cross-platform
+验证 API：
 
 ```bash
-node scripts/control-bg.js start
-node scripts/control-bg.js status
-node scripts/control-bg.js stop
+curl http://127.0.0.1:4317/api/health
+curl http://127.0.0.1:4317/api/sessions
 ```
+
+如果返回 JSON，说明 UI 已经起来了。
+
+## 手动控制
 
 ### Windows
 
@@ -95,56 +108,14 @@ bash ./session-branch-ui/scripts/status.sh
 bash ./session-branch-ui/scripts/stop.sh
 ```
 
-## Verify it works
+## 注意事项
 
-Check the UI process:
+- 最完整的历史恢复依赖本机 OpenClaw state/session 文件
+- 纯远程 Gateway 场景下，历史完整性不如本机部署
+- 如果模型侧限流或报错，UI 现在会尽量把 assistant 错误态直接显示出来，避免看起来像“没回复”
 
-```bash
-node scripts/control-bg.js status
-```
+## 排障
 
-Check the API:
-
-```bash
-curl http://127.0.0.1:4317/api/sessions
-```
-
-If that returns JSON, the UI is alive.
-
-## How the skill is structured
-
-- `SKILL.md`: agent-facing installation workflow
-- `scripts/install_session_branch_ui.py`: installer
-- `assets/session-branch-ui-template/`: actual UI app template
-- `assets/session-branch-ui-hook/`: Gateway startup hook
-- `references/`: platform and architecture notes
-
-## Important behavior
-
-- The UI reads local OpenClaw session files directly for durable history caching
-- Remote Gateway-only setups are not enough if you want complete transcript history
-- `/compact` history is preserved in Branch UI by merging the active transcript with compacted backup files when present
-
-## Who this is for
-
-This skill is a good fit if you want:
-
-- branch-style conversations inside one OpenClaw agent
-- a local browser UI for session management
-- a reproducible setup across multiple devices
-- a better workflow for long-running OpenClaw sessions
-
-## Troubleshooting
-
-- If the page opens but history looks incomplete, verify the target machine has the right `~/.openclaw/agents/<agent>/sessions/` data
-- If the UI does not start after install, restart the Gateway and inspect `session-branch-ui/logs/`
-- If `clawhub publish` fails, verify login state with `clawhub whoami`
-multiple devices
-- a better workflow for long-running OpenClaw sessions
-
-## Troubleshooting
-
-- If the page opens but history looks incomplete, verify the target machine has the right `~/.openclaw/agents/<agent>/sessions/` data
-- If the UI does not start after install, restart the Gateway and inspect `session-branch-ui/logs/`
-- If `clawhub publish` fails, verify login state with `clawhub whoami`
-the same machine as the target OpenClaw state directory
+- 页面能打开但历史不全：检查目标机器的 `~/.openclaw/agents/<agent>/sessions/`
+- UI 没自动起来：重启 Gateway，并检查 `session-branch-ui/logs/`
+- 发送成功但无 assistant 正文：检查是否出现模型报错/限流信息
