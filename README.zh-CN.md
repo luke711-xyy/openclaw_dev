@@ -1,8 +1,10 @@
 # openclaw_dev
 
-这是一个用于公开分发 `openclaw-session-branch-ui` skill 的仓库。
+这是现在用于公开分发 `openclaw-session-branch-ui` skill 的主仓库。
 
 它把完整的 **Session Branch UI** 整理成了可复用的 AgentSkill，方便在新的 OpenClaw 环境中快速安装、复现和继续迭代。
+
+之前单独的 `openclaw-session-branch-ui` 仓库已经归档，避免后续混淆。
 
 英文说明见 [`README.md`](README.md)。
 
@@ -19,6 +21,10 @@
 - Gateway 启动时自动拉起 UI 的 hook
 - 监听 Gateway 生命周期的 watcher
 - 对 compact 后历史的恢复支持：会合并同会话的 `.jsonl.bak.*` 备份历史
+- 当 Gateway RPC 缺少 `operator.write` 时，自动 fallback 到本地 transcript 写入
+- fallback 发送后，`history-delta` 仍能正常刷新
+- 新建 branch 第一次发送时自动 bootstrap 本地 session
+- assistant 只有 `errorMessage` 时也会在历史中显式显示
 
 ## 仓库结构
 

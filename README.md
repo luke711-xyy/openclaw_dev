@@ -1,8 +1,10 @@
 # openclaw_dev
 
-This repository publishes the `openclaw-session-branch-ui` skill.
+This repository is now the canonical home of the `openclaw-session-branch-ui` skill.
 
 It packages the full **Session Branch UI** workflow into a reusable AgentSkill so a fresh OpenClaw setup can install the UI, its Gateway startup hook, and its watcher with minimal manual work.
+
+The old standalone `openclaw-session-branch-ui` repository has been archived to avoid confusion.
 
 For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 
@@ -19,6 +21,10 @@ For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 - a Gateway startup hook that auto-starts the UI
 - a watcher that stops the UI after the Gateway exits
 - compact-history recovery by merging active transcripts with same-session `.jsonl.bak.*` files
+- fallback local transcript send when Gateway RPC lacks `operator.write`
+- working `history-delta` updates after fallback send
+- first-message bootstrap for newly created branches
+- assistant error visibility when a reply only contains `errorMessage`
 
 ## Repository layout
 

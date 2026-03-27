@@ -41,8 +41,8 @@
 ### 方案 A：从 GitHub 克隆后安装
 
 ```bash
-git clone https://github.com/luke711-xyy/openclaw-session-branch-ui.git
-cd openclaw-session-branch-ui
+git clone https://github.com/luke711-xyy/openclaw_dev.git
+cd openclaw_dev/skills/openclaw-session-branch-ui
 python scripts/install_session_branch_ui.py
 ```
 
@@ -60,7 +60,7 @@ python scripts/install_session_branch_ui.py --dry-run
 
 ### 方案 B：从本地 skill 包安装
 
-本仓库外也会生成一个可分发的 `openclaw-session-branch-ui.skill` 包。
+本仓库的 `dist/openclaw-session-branch-ui.skill` 会生成可分发安装包。
 安装后进入 skill 目录，再运行：
 
 ```bash
