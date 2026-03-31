@@ -13,7 +13,7 @@ For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 `openclaw-session-branch-ui` installs a local Session Branch UI stack for OpenClaw, including:
 
 - a local web UI for named branches and existing sessions
-- lazy loading for older transcript history
+- lazy loading for older transcript history (scroll-to-top trigger with loading indicator)
 - message search by keyword or timestamp
 - one-click copy buttons for user and assistant messages
 - Gateway websocket RPC access for session list, history, send, and abort
@@ -25,6 +25,9 @@ For the Chinese introduction, see [`README.zh-CN.md`](README.zh-CN.md).
 - working `history-delta` updates after fallback send
 - first-message bootstrap for newly created branches
 - assistant error visibility when a reply only contains `errorMessage`
+- session search bar filtering the "现有会话" list by name in real time
+- rename and delete work for all sessions (both named branches and ordinary sessions); renaming a named branch also syncs the display name to the OpenClaw session store so the dashboard reflects the new name
+- unified delete confirmation for all session types; deleting a named branch removes its transcript, cache, and session record from the OpenClaw store
 
 ## Repository layout
 

@@ -97,6 +97,30 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === 'DELETE' && url.pathname.startsWith('/api/sessions/')) {
+    const sessionKey = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
+    await deleteSession(sessionKey);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === 'PATCH' && url.pathname.startsWith('/api/sessions/')) {
+    const sessionKey = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
+    const body = await readJsonBody(req);
+    if (body && typeof body.displayName === 'string' && body.displayName.trim()) {
+      const agentId = resolveAgentIdFromSessionKey(sessionKey);
+      const { store } = readSessionStore(agentId);
+      if (store[sessionKey]) {
+        store[sessionKey].displayName = body.displayName.trim();
+        writeSessionStore(agentId, store);
+      }
+      sendJson(res, 200, { ok: true });
+    } else {
+      sendJson(res, 400, { error: 'displayName required' });
+    }
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/sessions') {
     const sessions = listStoredSessions('main');
     sendJson(res, 200, { sessions, defaults: null });
@@ -515,6 +539,15 @@ function createBranch(input) {
   };
   branches.unshift(branch);
   writeBranches(branches);
+
+  // Sync displayName to session store
+  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  const { store } = readSessionStore(agentId);
+  if (store[sessionKey]) {
+    store[sessionKey].displayName = name;
+    writeSessionStore(agentId, store);
+  }
+
   syncAutoWatchers().catch((error) => {
     console.error(`[history-watch] create sync failed: ${error.message || error}`);
   });
@@ -533,6 +566,16 @@ function updateBranch(branchId, input) {
   }
   branches[index] = { ...branches[index], name: nextName };
   writeBranches(branches);
+
+  // Sync displayName to session store so OpenClaw dashboard shows the new name
+  const updated = branches[index];
+  const agentId = resolveAgentIdFromSessionKey(updated.sessionKey);
+  const { store } = readSessionStore(agentId);
+  if (store[updated.sessionKey]) {
+    store[updated.sessionKey].displayName = nextName;
+    writeSessionStore(agentId, store);
+  }
+
   return branches[index];
 }
 
@@ -545,6 +588,63 @@ function deleteBranch(branchId) {
   writeBranches(next);
   syncAutoWatchers().catch((error) => {
     console.error(`[history-watch] delete sync failed: ${error.message || error}`);
+  });
+}
+
+async function deleteSession(sessionKey) {
+  const normalizedKey = String(sessionKey || '').trim();
+  if (!normalizedKey) {
+    throw new Error('sessionKey is required');
+  }
+
+  const sessionInfo = getSessionEntry(normalizedKey);
+  const branchAliases = readBranches().filter((branch) => branch.sessionKey === normalizedKey);
+  const transcriptSources = resolveTranscriptSources(sessionInfo.transcriptPath);
+  const cacheMetaPath = historyCacheFilePath(normalizedKey);
+  const cacheMessagesPath = historyCacheMessagesPath(normalizedKey);
+  const hasAnyLocalState = Boolean(
+    sessionInfo.entry
+    || branchAliases.length
+    || transcriptSources.length
+    || fs.existsSync(cacheMetaPath)
+    || fs.existsSync(cacheMessagesPath)
+  );
+
+  if (!hasAnyLocalState) {
+    throw new Error('Session not found');
+  }
+
+  try {
+    await gatewayCall('chat.abort', { sessionKey: normalizedKey });
+  } catch {}
+
+  stopHistoryWatcher(normalizedKey);
+  pendingBackgroundSyncs.delete(normalizedKey);
+
+  if (branchAliases.length) {
+    const keptBranches = readBranches().filter((branch) => branch.sessionKey !== normalizedKey);
+    writeBranches(keptBranches);
+  }
+
+  if (sessionInfo.entry) {
+    const agentId = resolveAgentIdFromSessionKey(normalizedKey);
+    const { store } = readSessionStore(agentId);
+    delete store[normalizedKey];
+    writeSessionStore(agentId, store);
+  }
+
+  for (const filePath of [cacheMetaPath, cacheMessagesPath, ...transcriptSources]) {
+    try {
+      if (filePath && fs.existsSync(filePath)) {
+        fs.rmSync(filePath, { force: true });
+      }
+    } catch (error) {
+      console.error(`[delete-session] failed to remove ${filePath}: ${error.message || error}`);
+    }
+  }
+
+  syncAutoWatchers().catch((error) => {
+    console.error(`[history-watch] session delete sync failed: ${error.message || error}`);
   });
 }
 
@@ -687,17 +787,26 @@ function getSessionEntry(sessionKey) {
 
 function listStoredSessions(agentId = 'main') {
   const { store } = readSessionStore(agentId);
+  const branches = readBranches();
   return Object.entries(store)
-    .map(([key, entry]) => ({
-      key,
-      updatedAt: entry.updatedAt || 0,
-      sessionId: entry.sessionId || null,
-      kind: entry.chatType || 'other',
-      lastChannel: entry.lastChannel || entry.origin?.provider || null,
-      displayName: entry.displayName || entry.origin?.label || key,
-      origin: entry.origin || null,
-      transcriptPath: entry.sessionFile || null,
-    }))
+    .map(([key, entry]) => {
+      const branch = branches.find((b) => b.sessionKey === key);
+      const displayName = branch
+        ? branch.name
+        : (entry.displayName || entry.origin?.label || key);
+      return {
+        key,
+        updatedAt: entry.updatedAt || 0,
+        sessionId: entry.sessionId || null,
+        kind: entry.chatType || 'other',
+        lastChannel: entry.lastChannel || entry.origin?.provider || null,
+        displayName,
+        origin: entry.origin || null,
+        transcriptPath: entry.sessionFile || null,
+        branchId: branch ? branch.id : null,
+        branchName: branch ? branch.name : null,
+      };
+    })
     .sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0));
 }
 

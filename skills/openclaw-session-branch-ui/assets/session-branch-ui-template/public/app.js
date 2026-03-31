@@ -1,12 +1,12 @@
 const state = {
-  branches: [],
+
   sessions: [],
   active: null,
   activeHistoryKey: null,
   historyTimer: null,
   sessionTimer: null,
-  metricsTimer: null,
-  loadedMessages: [],
+  sessionSearchQuery: '',
+loadedMessages: [],
   historyBefore: null,
   historyHasMore: false,
   historyLoadingOlder: false,
@@ -38,7 +38,7 @@ const SEARCH_CONTEXT_PAGE_SIZE = 120;
 const MESSAGE_HIGHLIGHT_MS = 2200;
 
 const elements = {
-  branchesList: document.getElementById('branches-list'),
+
   sessionsList: document.getElementById('sessions-list'),
   layout: document.getElementById('layout'),
   sidebar: document.getElementById('sidebar'),
@@ -55,11 +55,11 @@ const elements = {
   branchName: document.getElementById('branch-name'),
   renameBranch: document.getElementById('rename-branch'),
   deleteBranch: document.getElementById('delete-branch'),
-  abortRun: document.getElementById('abort-run'),
-  metricsPanel: document.getElementById('metrics-panel'),
-  contextMenu: document.getElementById('message-context-menu'),
+
+contextMenu: document.getElementById('message-context-menu'),
   contextDeleteBefore: document.getElementById('context-delete-before'),
   itemTemplate: document.getElementById('item-template'),
+  sessionSearch: document.getElementById('session-search'),
   messageSearch: document.getElementById('message-search'),
   messageSearchSummary: document.getElementById('message-search-summary'),
   messageSearchResults: document.getElementById('message-search-results'),
@@ -73,14 +73,11 @@ async function boot() {
   syncSidebarMode();
   updateSelectionChrome();
   renderMessages([]);
-  renderMetrics(null);
   window.addEventListener('unhandledrejection', (event) => {
     setStatus(event.reason?.message || '请求失败');
   });
   await guard(refreshAll);
-  void guard(refreshMetrics);
   state.sessionTimer = setInterval(() => guard(refreshSessions), 10000);
-  state.metricsTimer = setInterval(() => guard(refreshMetrics), 10000);
 }
 
 function bindEvents() {
@@ -89,7 +86,7 @@ function bindEvents() {
   elements.sendButton.addEventListener('click', () => guard(onSend));
   elements.renameBranch.addEventListener('click', () => guard(onRenameBranch));
   elements.deleteBranch.addEventListener('click', () => guard(onDeleteBranch));
-  elements.abortRun.addEventListener('click', () => guard(onAbort));
+
   elements.sidebarOpen.addEventListener('click', () => {
     if (state.sidebarAutoCollapsed) {
       openSidebarOverlay();
@@ -105,6 +102,10 @@ function bindEvents() {
     setSidebarCollapsed(true, true);
   });
   elements.contextDeleteBefore.addEventListener('click', () => guard(onContextDeleteBefore));
+  elements.sessionSearch.addEventListener('input', () => {
+    state.sessionSearchQuery = elements.sessionSearch.value.trim().toLowerCase();
+    renderSessions();
+  });
   elements.messages.addEventListener('scroll', () => {
     hideContextMenu();
     if (elements.messages.scrollTop <= HISTORY_TOP_THRESHOLD) {
@@ -147,7 +148,7 @@ function bindEvents() {
 
 async function refreshAll() {
   setStatus('正在刷新…');
-  await Promise.all([refreshBranches(), refreshSessions()]);
+  await Promise.all([refreshSessions()]);
   if (!state.active) {
     clearActiveState();
   } else {
@@ -156,21 +157,10 @@ async function refreshAll() {
   setStatus('已刷新');
 }
 
-async function refreshBranches() {
-  const result = await api('/api/branches');
-  state.branches = result.branches || [];
-  renderBranches();
-}
-
 async function refreshSessions() {
   const result = await api('/api/sessions');
   state.sessions = (result.sessions || []).sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0));
   renderSessions();
-}
-
-async function refreshMetrics() {
-  const metrics = await api('/api/metrics');
-  renderMetrics(metrics);
 }
 
 function getLayoutThresholdWidth() {
@@ -211,62 +201,19 @@ function applySidebarState() {
   elements.sidebarOpen.textContent = state.sidebarAutoCollapsed ? '☰' : '◧';
 }
 
-function renderMetrics(metrics) {
-  const entries = metrics ? [
-    ['RSS', `${metrics.memory?.rssMb ?? '-'} MB`],
-    ['Heap', `${metrics.memory?.heapUsedMb ?? '-'} / ${metrics.memory?.heapTotalMb ?? '-'} MB`],
-    ['Watchers', `${metrics.watchers?.total ?? '-'} (${metrics.watchers?.active ?? 0}/${metrics.watchers?.warm ?? 0}/${metrics.watchers?.cold ?? 0})`],
-    ['Cache', `${metrics.cache?.files ?? '-'} files / ${metrics.cache?.sizeMb ?? '-'} MB`],
-    ['Visible Sessions', `${metrics.sessions?.visible ?? '-'}`],
-    ['Uptime', `${metrics.uptimeSec ?? '-'} s`],
-  ] : [
-    ['RSS', '-'],
-    ['Heap', '-'],
-    ['Watchers', '-'],
-    ['Cache', '-'],
-    ['Visible Sessions', '-'],
-    ['Uptime', '-'],
-  ];
-
-  elements.metricsPanel.replaceChildren();
-  for (const [label, value] of entries) {
-    const card = document.createElement('div');
-    card.className = 'metric-card';
-    const title = document.createElement('div');
-    title.className = 'metric-label';
-    title.textContent = label;
-    const body = document.createElement('div');
-    body.className = 'metric-value';
-    body.textContent = value;
-    card.append(title, body);
-    elements.metricsPanel.append(card);
-  }
-}
-
-function renderBranches() {
-  elements.branchesList.replaceChildren();
-  if (!state.branches.length) {
-    elements.branchesList.append(makeEmpty('还没有命名分支。上面输个名字就能开。'));
-    return;
-  }
-  for (const branch of state.branches) {
-    const node = makeItem({
-      title: branch.name,
-      meta: `${branch.sessionKey}\n创建于 ${formatTime(branch.createdAt)}`,
-      active: state.active?.sessionKey === branch.sessionKey,
-      onClick: () => guard(() => selectItem({ type: 'branch', data: branch })),
-    });
-    elements.branchesList.append(node);
-  }
-}
-
 function renderSessions() {
   elements.sessionsList.replaceChildren();
-  if (!state.sessions.length) {
-    elements.sessionsList.append(makeEmpty('还没有可见会话。'));
+  const query = state.sessionSearchQuery;
+  const filtered = query
+    ? state.sessions.filter((s) =>
+        (s.displayName || s.key || '').toLowerCase().includes(query)
+      )
+    : state.sessions;
+  if (!filtered.length) {
+    elements.sessionsList.append(makeEmpty(query ? '无匹配会话。' : '还没有可见会话。'));
     return;
   }
-  for (const session of state.sessions) {
+  for (const session of filtered) {
     const title = session.displayName || session.key;
     const meta = [session.key, session.kind || '', session.lastChannel || session.origin?.provider || '', relativeTime(session.updatedAt)].filter(Boolean).join(' · ');
     const node = makeItem({
@@ -281,12 +228,13 @@ function renderSessions() {
 
 function updateSelectionChrome() {
   const hasActive = Boolean(state.active?.sessionKey);
+  const isNamedBranch = Boolean(state.active?.branchId);
   elements.activeTitle.textContent = hasActive ? state.active.title : '未选择';
   elements.activeKey.textContent = hasActive ? state.active.sessionKey : '先从左侧选一个命名分支或现有会话';
-  elements.renameBranch.disabled = !state.active?.branchId;
-  elements.deleteBranch.disabled = !state.active?.branchId;
-  elements.abortRun.disabled = !hasActive;
-  elements.sendButton.disabled = !hasActive;
+  elements.renameBranch.disabled = !isNamedBranch;
+  elements.deleteBranch.disabled = !hasActive;
+  elements.deleteBranch.textContent = isNamedBranch ? '删除分支' : '删除会话';
+elements.sendButton.disabled = !hasActive;
   elements.composerInput.disabled = !hasActive;
   elements.messageSearch.disabled = !hasActive;
 }
@@ -308,7 +256,6 @@ function clearActiveState() {
     state.historyTimer = null;
   }
   updateSelectionChrome();
-  renderBranches();
   renderSessions();
   renderMessages([]);
 }
@@ -319,7 +266,7 @@ async function selectItem(item) {
     type: item.type,
     sessionKey: item.type === 'branch' ? item.data.sessionKey : item.data.key,
     title: item.type === 'branch' ? item.data.name : (item.data.displayName || item.data.key),
-    branchId: item.type === 'branch' ? item.data.id : null,
+    branchId: item.data.branchId || null,
   };
 
   state.activeHistoryKey = state.active.sessionKey;
@@ -333,7 +280,6 @@ async function selectItem(item) {
   setHistoryLoading(false);
 
   updateSelectionChrome();
-  renderBranches();
   renderSessions();
 
   void api('/api/watch', {
@@ -723,38 +669,63 @@ async function onCreateBranch(event) {
     body: JSON.stringify({ name }),
   });
   elements.branchName.value = '';
-  await refreshBranches();
+  await refreshSessions();
   await selectItem({ type: 'branch', data: result.branch });
   setStatus('分支已创建');
 }
 
 async function onRenameBranch() {
-  if (!state.active?.branchId) {
-    alert('当前不是命名分支。');
+  if (!state.active?.sessionKey) {
+    alert('先选一个分支或现有会话。');
     return;
   }
-  const name = window.prompt('新分支名', state.active.title);
+  const name = window.prompt('新名字', state.active.title);
   if (!name || !name.trim()) return;
   setStatus('正在重命名…');
-  const result = await api(`/api/branches/${encodeURIComponent(state.active.branchId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ name: name.trim() }),
-  });
-  await refreshBranches();
-  await selectItem({ type: 'branch', data: result.branch });
+  if (state.active.branchId) {
+    const result = await api(`/api/branches/${encodeURIComponent(state.active.branchId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    await refreshSessions();
+    await selectItem({ type: 'branch', data: result.branch });
+  } else {
+    await api(`/api/sessions/${encodeURIComponent(state.active.sessionKey)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ displayName: name.trim() }),
+    });
+    await refreshSessions();
+    const updated = state.sessions.find((s) => s.key === state.active.sessionKey);
+    if (updated) {
+      await selectItem({ type: 'session', data: updated });
+    }
+  }
   setStatus('已重命名');
 }
 
 async function onDeleteBranch() {
-  if (!state.active?.branchId) {
-    alert('当前不是命名分支。');
+  if (!state.active?.sessionKey) {
+    alert('先选一个命名分支或现有会话。');
     return;
   }
-  if (!window.confirm('删除这个命名分支入口？只会删别名，不会删底层 transcript。')) return;
-  await api(`/api/branches/${encodeURIComponent(state.active.branchId)}`, { method: 'DELETE' });
+
+  if (state.active.branchId) {
+    if (!window.confirm('确定删除这个现有会话吗？\n这会删除 session 记录、transcript、缓存，以及关联的命名分支别名，且不可恢复。')) return;
+    setStatus('正在删除会话…');
+    await api(`/api/branches/${encodeURIComponent(state.active.branchId)}`, { method: 'DELETE' });
+    clearActiveState();
+    await refreshAll();
+    setStatus('会话已删除');
+    return;
+  }
+
+  const ok = window.confirm('确定删除这个现有会话吗？\n这会删除 session 记录、transcript、缓存，以及关联的命名分支别名，且不可恢复。');
+  if (!ok) return;
+  setStatus('正在删除会话…');
+  await api(`/api/sessions/${encodeURIComponent(state.active.sessionKey)}`, { method: 'DELETE' });
   clearActiveState();
   await refreshAll();
-  setStatus('分支别名已删除');
+  setStatus('会话已删除');
 }
 
 async function onSend() {
@@ -778,15 +749,6 @@ async function onSend() {
   } finally {
     elements.sendButton.disabled = false;
   }
-}
-
-async function onAbort() {
-  if (!state.active?.sessionKey) return;
-  await api('/api/abort', {
-    method: 'POST',
-    body: JSON.stringify({ sessionKey: state.active.sessionKey }),
-  });
-  setStatus('已请求停止');
 }
 
 async function onContextDeleteBefore() {

@@ -25,22 +25,16 @@
             <input id="branch-name" name="branchName" type="text" placeholder="比如：写作分支 / 调研分支" autocomplete="off" />
             <button type="submit">新建</button>
           </form>
-          <div id="branches-list" class="list"></div>
         </section>
 
         <section class="panel">
           <div class="panel-title-row">
             <h2>现有会话</h2>
           </div>
+          <input id="session-search" type="search" class="session-search-input" placeholder="搜索会话名…" autocomplete="off" />
           <div id="sessions-list" class="list"></div>
         </section>
 
-        <section class="panel metrics-panel">
-          <div class="panel-title-row">
-            <h2>资源观测</h2>
-          </div>
-          <div id="metrics-panel" class="metrics-grid"></div>
-        </section>
       </aside>
 
       <main class="main">
@@ -63,7 +57,6 @@
             </div>
             <button id="rename-branch" class="ghost">重命名</button>
             <button id="delete-branch" class="danger ghost">删除分支</button>
-            <button id="abort-run" class="ghost">停止</button>
           </div>
         </header>
 
