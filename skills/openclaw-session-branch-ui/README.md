@@ -17,14 +17,18 @@
 - fallback 发送后，`history-delta` 可以立即看到新 user message
 - assistant 回复会继续同步进 `history-delta`
 - assistant 没有正文但存在 `errorMessage` 时，会把错误内容显式展示到历史里，而不是静默丢失
+- 重命名和删除支持所有会话类型（命名分支和普通会话均可）；重命名命名分支时同步更新 OpenClaw session store 中的 displayName，OpenClaw dashboard 也会显示新名称
+- 统一删除确认提示；删除命名分支会真正清除 transcript、缓存和 session store 记录
+- "现有会话"列表顶部新增会话名搜索栏，实时过滤
+- 删除"资源观测"面板和单独的命名分支列表，简化侧边栏
 
 ## 主要能力
 
-- 创建/重命名/删除命名分支
+- 创建/重命名/删除命名分支（支持所有会话类型重命名和删除）
 - 浏览 Gateway 当前可见 sessions
-- 懒加载历史消息
+- 懒加载历史消息（滚动到顶部触发加载）
 - 搜索历史消息
-- 发送消息 / 中止当前运行
+- 发送消息
 - 合并当前 transcript 与同 session 的 `.jsonl.bak.*`，尽量保留 compact 前后的历史可见性
 - 通过 Gateway hook 自动启动 UI，并在 Gateway 退出后自动停止 watcher
 

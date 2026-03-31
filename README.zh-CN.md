@@ -13,10 +13,11 @@
 `openclaw-session-branch-ui` 提供一套完整的 OpenClaw 分支会话管理方案，包含：
 
 - 本地 Web UI，用于管理命名分支和现有会话
-- 更早消息懒加载
+- 更早消息懒加载（滚动到顶部触发，显示加载中提示）
 - 按关键词或时间戳搜索消息
 - user / assistant 消息一键复制
-- 通过 Gateway websocket RPC 获取会话列表、历史消息、发送消息、停止运行
+- 通过 Gateway websocket RPC 获取会话列表、历史消息、发送消息
+- 统一的重命名和删除能力（所有会话类型均支持）；重命名分支同步 OpenClaw dashboard 显示新名称
 - 后台启停/状态检查脚本
 - Gateway 启动时自动拉起 UI 的 hook
 - 监听 Gateway 生命周期的 watcher
@@ -25,6 +26,8 @@
 - fallback 发送后，`history-delta` 仍能正常刷新
 - 新建 branch 第一次发送时自动 bootstrap 本地 session
 - assistant 只有 `errorMessage` 时也会在历史中显式显示
+- "现有会话"列表顶部搜索栏，实时按名称过滤会话
+- 删除"资源观测"面板和单独的命名分支列表，简化侧边栏；命名分支创建后直接在"现有会话"中显示
 
 ## 仓库结构
 
